@@ -1,4 +1,4 @@
-# permissions to do viewer codeservers.
+# permissions for end users to view codeservers.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

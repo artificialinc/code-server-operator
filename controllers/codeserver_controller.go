@@ -20,12 +20,18 @@ import (
 	"context"
 	errrorlib "errors"
 	"fmt"
+	"net/http"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/go-logr/logr"
 	"github.com/opensourceways/code-server-operator/controllers/initplugins"
-	"github.com/opensourceways/code-server-operator/controllers/initplugins/interface"
+	_interface "github.com/opensourceways/code-server-operator/controllers/initplugins/interface"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	extv1 "k8s.io/api/extensions/v1beta1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	resourcev1 "k8s.io/apimachinery/pkg/api/resource"
@@ -33,16 +39,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
-	"net/http"
-	"path"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"strconv"
-	"strings"
-	"time"
 
 	csv1alpha1 "github.com/opensourceways/code-server-operator/api/v1alpha1"
 )
@@ -336,7 +337,7 @@ func (r *CodeServerReconciler) deleteCodeServerResource(name, namespace string, 
 	reqLogger := r.Log.WithValues("namespace", name, "name", namespace)
 	reqLogger.Info("Deleting code server resources.")
 	//delete ingress
-	ing := &extv1.Ingress{}
+	ing := &networkingv1.Ingress{}
 	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: name, Namespace: namespace}, ing)
 	//error of getting object is ignored
 	if err == nil {
@@ -481,12 +482,12 @@ func (r *CodeServerReconciler) reconcileForDeployment(codeServer *csv1alpha1.Cod
 	return oldDev, nil
 }
 
-func (r *CodeServerReconciler) reconcileForIngress(codeServer *csv1alpha1.CodeServer) (*extv1.Ingress, error) {
+func (r *CodeServerReconciler) reconcileForIngress(codeServer *csv1alpha1.CodeServer) (*networkingv1.Ingress, error) {
 	reqLogger := r.Log.WithValues("namespace", codeServer.Namespace, "name", codeServer.Name)
 	reqLogger.Info("Reconciling ingress.")
 	//reconcile ingress for code server
 	newIngress := r.NewIngress(codeServer)
-	oldIngress := &extv1.Ingress{}
+	oldIngress := &networkingv1.Ingress{}
 	err := r.Client.Get(context.TODO(), types.NamespacedName{Name: fmt.Sprintf(TerminalIngress, codeServer.Name), Namespace: codeServer.Namespace}, oldIngress)
 	if err != nil && errors.IsNotFound(err) {
 		reqLogger.Info("Creating an ingress.")
@@ -1117,37 +1118,41 @@ func (r *CodeServerReconciler) newPVC(m *csv1alpha1.CodeServer) (*corev1.Persist
 }
 
 // NewIngress function takes in a CodeServer object and returns an ingress for that object.
-func (r *CodeServerReconciler) NewIngress(m *csv1alpha1.CodeServer) *extv1.Ingress {
+func (r *CodeServerReconciler) NewIngress(m *csv1alpha1.CodeServer) *networkingv1.Ingress {
 	servicePort := intstr.FromInt(HttpPort)
-	httpValue := extv1.HTTPIngressRuleValue{
-		Paths: []extv1.HTTPIngressPath{
+	httpValue := networkingv1.HTTPIngressRuleValue{
+		Paths: []networkingv1.HTTPIngressPath{
 			{
 				Path: "/",
-				Backend: extv1.IngressBackend{
-					ServiceName: m.Name,
-					ServicePort: servicePort,
+				Backend: networkingv1.IngressBackend{
+					Service: &networkingv1.IngressServiceBackend{
+						Name: m.Name,
+						Port: networkingv1.ServiceBackendPort{
+							Number: servicePort.IntVal,
+						},
+					},
 				},
 			},
 		},
 	}
-	ingress := &extv1.Ingress{
+	ingress := &networkingv1.Ingress{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        fmt.Sprintf(TerminalIngress, m.Name),
 			Namespace:   m.Namespace,
 			Annotations: r.annotationsForIngress(),
 		},
-		Spec: extv1.IngressSpec{
-			Rules: []extv1.IngressRule{
+		Spec: networkingv1.IngressSpec{
+			Rules: []networkingv1.IngressRule{
 				{
 					Host: fmt.Sprintf("%s.%s", m.Spec.Subdomain, r.Options.DomainName),
-					IngressRuleValue: extv1.IngressRuleValue{
+					IngressRuleValue: networkingv1.IngressRuleValue{
 						HTTP: &httpValue,
 					},
 				},
 			},
 		},
 	}
-	ingress.Spec.TLS = []extv1.IngressTLS{
+	ingress.Spec.TLS = []networkingv1.IngressTLS{
 		{
 			Hosts:      []string{fmt.Sprintf("%s.%s", m.Spec.Subdomain, r.Options.DomainName)},
 			SecretName: r.Options.HttpsSecretName,
@@ -1313,6 +1318,6 @@ func (r *CodeServerReconciler) SetupWithManager(mgr ctrl.Manager, maxConcurrency
 	//watch codeserver, server, ingress, pvc and deployment.
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&csv1alpha1.CodeServer{}).Owns(&corev1.Service{}).
-		Owns(&extv1.Ingress{}).Owns(&appsv1.Deployment{}).Owns(&corev1.PersistentVolumeClaim{}).WithOptions(options).
+		Owns(&networkingv1.Ingress{}).Owns(&appsv1.Deployment{}).Owns(&corev1.PersistentVolumeClaim{}).WithOptions(options).
 		Complete(r)
 }

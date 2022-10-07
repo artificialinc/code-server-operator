@@ -1,4 +1,4 @@
-# permissions to do edit codeservers.
+# permissions for end users to edit codeservers.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -22,5 +22,3 @@ rules:
   - codeservers/status
   verbs:
   - get
-  - patch
-  - update

@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -112,6 +113,7 @@ func main() {
 	if err = (&controllers.CodeServerReconciler{
 		Client:  mgr.GetClient(),
 		Scheme:  mgr.GetScheme(),
+		Log:     ctrl.Log.WithName("controllers").WithName("CodeServer"),
 		Options: &csOption,
 		ReqCh:   csRequest,
 	}).SetupWithManager(mgr, csOption.MaxConcurrency); err != nil {
@@ -129,8 +131,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// +kubebuilder:scaffold:builder
+	probeTicker := time.NewTicker(time.Duration(csOption.ProbeInterval) * time.Second)
+	defer probeTicker.Stop()
+	//setup code server watcher
+	codeServerWatcher := controllers.NewCodeServerWatcher(
+		mgr.GetClient(),
+		ctrl.Log.WithName("controllers").WithName("CodeServerWatcher"),
+		mgr.GetScheme(),
+		&csOption,
+		csRequest,
+		probeTicker.C)
+	stopContext := ctrl.SetupSignalHandler()
+	go codeServerWatcher.Run(stopContext.Done())
+
 	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(stopContext); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}

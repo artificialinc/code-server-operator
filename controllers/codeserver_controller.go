@@ -160,16 +160,18 @@ func (r *CodeServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		var service *corev1.Service
 		var deployment *appsv1.Deployment
 		var condition csv1alpha1.ServerCondition
-		// 0/5 check whether tls secret exists
-		_, failed = r.findLegalCertSecrets(codeServer.Name, codeServer.Namespace, r.Options.HttpsSecretName)
-		if failed == nil {
-			// check LxdClientSecretName secret if needed
-			if strings.EqualFold(string(codeServer.Spec.Runtime), string(csv1alpha1.RuntimeLxd)) {
-				if len(r.Options.LxdClientSecretName) == 0 {
-					_, failed = r.findLegalCertSecrets(codeServer.Name, codeServer.Namespace, r.Options.LxdClientSecretName)
-				}
-			}
-		}
+
+		// Disable until we figure out cert-manager
+		// // 0/5 check whether tls secret exists
+		// _, failed = r.findLegalCertSecrets(codeServer.Name, codeServer.Namespace, r.Options.HttpsSecretName)
+		// if failed == nil {
+		// 	// check LxdClientSecretName secret if needed
+		// 	if strings.EqualFold(string(codeServer.Spec.Runtime), string(csv1alpha1.RuntimeLxd)) {
+		// 		if len(r.Options.LxdClientSecretName) == 0 {
+		// 			_, failed = r.findLegalCertSecrets(codeServer.Name, codeServer.Namespace, r.Options.LxdClientSecretName)
+		// 		}
+		// 	}
+		// }
 		// 1/5: reconcile PVC
 		if failed == nil {
 			if r.needDeployPVC(codeServer.Spec.StorageName) {
@@ -1120,10 +1122,13 @@ func (r *CodeServerReconciler) newPVC(m *csv1alpha1.CodeServer) (*corev1.Persist
 // NewIngress function takes in a CodeServer object and returns an ingress for that object.
 func (r *CodeServerReconciler) NewIngress(m *csv1alpha1.CodeServer) *networkingv1.Ingress {
 	servicePort := intstr.FromInt(HttpPort)
+	pathType := networkingv1.PathTypeImplementationSpecific
 	httpValue := networkingv1.HTTPIngressRuleValue{
 		Paths: []networkingv1.HTTPIngressPath{
 			{
-				Path: "/",
+				// I think ImplementationSpecific is ok here...
+				PathType: &pathType,
+				Path:     "/",
 				Backend: networkingv1.IngressBackend{
 					Service: &networkingv1.IngressServiceBackend{
 						Name: m.Name,
@@ -1152,12 +1157,13 @@ func (r *CodeServerReconciler) NewIngress(m *csv1alpha1.CodeServer) *networkingv
 			},
 		},
 	}
-	ingress.Spec.TLS = []networkingv1.IngressTLS{
-		{
-			Hosts:      []string{fmt.Sprintf("%s.%s", m.Spec.Subdomain, r.Options.DomainName)},
-			SecretName: r.Options.HttpsSecretName,
-		},
-	}
+	// Disable TLS for now. Will likely use cert manager instead
+	// ingress.Spec.TLS = []networkingv1.IngressTLS{
+	// 	{
+	// 		Hosts:      []string{fmt.Sprintf("%s.%s", m.Spec.Subdomain, r.Options.DomainName)},
+	// 		SecretName: r.Options.HttpsSecretName,
+	// 	},
+	// }
 	// Set CodeServer instance as the owner of the ingress.
 	controllerutil.SetControllerReference(m, ingress, r.Scheme)
 	return ingress

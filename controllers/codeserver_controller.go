@@ -432,8 +432,12 @@ func (r *CodeServerReconciler) serverReady(codeServer *csv1alpha1.CodeServer) bo
 	reqLogger := r.Log.WithValues("namespace", codeServer.Namespace, "name", codeServer.Name)
 	reqLogger.Info("Waiting Service Ready.")
 	instEndpoint := ""
-	instEndpoint = fmt.Sprintf("https://%s.%s/%s", codeServer.Spec.Subdomain, r.Options.DomainName,
+	// HACK: Use http instead of https while figuring out certs
+	// HACK: Use localhost
+	instEndpoint = fmt.Sprintf("http://localhost/%s",
 		strings.TrimLeft(codeServer.Spec.ConnectProbe, "/"))
+	// instEndpoint = fmt.Sprintf("https://%s.%s/%s", codeServer.Spec.Subdomain, r.Options.DomainName,
+	// 	strings.TrimLeft(codeServer.Spec.ConnectProbe, "/"))
 	resp, err := http.Get(instEndpoint)
 	if err != nil {
 		reqLogger.Error(err, fmt.Sprintf("failed to detect instance endpoint for code server %s",
@@ -599,7 +603,9 @@ func (r *CodeServerReconciler) getInstanceEndpoint(m *csv1alpha1.CodeServer) str
 	} else if strings.EqualFold(instanceRuntime, string(csv1alpha1.RuntimeGeneric)) {
 		return fmt.Sprintf(m.Spec.ConnectionString, m.Spec.Subdomain, r.Options.DomainName)
 	} else {
-		return fmt.Sprintf("https://%s.%s/", m.Spec.Subdomain, r.Options.DomainName)
+		// HACK: Use http and localhost
+		return fmt.Sprintf("http://localhost/")
+		// return fmt.Sprintf("https://%s.%s/", m.Spec.Subdomain, r.Options.DomainName)
 	}
 }
 
@@ -1122,7 +1128,7 @@ func (r *CodeServerReconciler) newPVC(m *csv1alpha1.CodeServer) (*corev1.Persist
 // NewIngress function takes in a CodeServer object and returns an ingress for that object.
 func (r *CodeServerReconciler) NewIngress(m *csv1alpha1.CodeServer) *networkingv1.Ingress {
 	servicePort := intstr.FromInt(HttpPort)
-	pathType := networkingv1.PathTypeImplementationSpecific
+	pathType := networkingv1.PathTypePrefix
 	httpValue := networkingv1.HTTPIngressRuleValue{
 		Paths: []networkingv1.HTTPIngressPath{
 			{
@@ -1149,7 +1155,8 @@ func (r *CodeServerReconciler) NewIngress(m *csv1alpha1.CodeServer) *networkingv
 		Spec: networkingv1.IngressSpec{
 			Rules: []networkingv1.IngressRule{
 				{
-					Host: fmt.Sprintf("%s.%s", m.Spec.Subdomain, r.Options.DomainName),
+					// HACK: No host for testing
+					// Host: fmt.Sprintf("%s.%s", m.Spec.Subdomain, r.Options.DomainName),
 					IngressRuleValue: networkingv1.IngressRuleValue{
 						HTTP: &httpValue,
 					},

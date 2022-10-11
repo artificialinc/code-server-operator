@@ -19,15 +19,16 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"github.com/go-logr/logr"
 	"io/ioutil"
+	"net/http"
+	"strings"
+
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"net/http"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
 
 	"time"
 
@@ -114,6 +115,7 @@ func (cs *CodeServerWatcher) Run(stopCh <-chan struct{}) {
 	for {
 		select {
 		case event := <-cs.reqCh:
+			cs.Log.WithName("codeserverwatcher").Info(fmt.Sprintf("Got event %v", event))
 			switch event.operate {
 			case AddInactiveWatch:
 				cs.inActiveCache.AddOrUpdate(event)
@@ -212,7 +214,7 @@ func (cs *CodeServerWatcher) CodeServerNowInactive(mtime time.Time, key string, 
 	reqLogger := cs.Log.WithName("codeserverwatcher")
 	elapsed := time.Now().Sub(mtime)
 	if elapsed.Seconds() > float64(duration) {
-		reqLogger.Info(fmt.Sprintf("code server %s probed long time invalid, last active time %s and now %s", key, mtime, time.Now()))
+		reqLogger.Info(fmt.Sprintf("code server %s probed long time invalid, last active time %s and now %.s. Elapsed: %s", key, mtime, time.Now(), elapsed))
 		return true
 	}
 	return false

@@ -49,16 +49,17 @@ import (
 )
 
 const (
-	CSNAME           = "code-server"
-	MaxActiveSeconds = 60 * 60 * 24
-	MaxKeepSeconds   = 60 * 60 * 24 * 30
-	HttpPort         = 8080
-	DefaultWorkspace = "/workspace"
-	IngressLimitKey  = "kubernetes.io/ingress-bandwidth"
-	EgressLimitKey   = "kubernetes.io/egress-bandwidth"
-	StorageEmptyDir  = "emptyDir"
-	InstanceEndpoint = "instanceEndpoint"
-	TerminalIngress  = "%s-terminal"
+	CSNAME             = "code-server"
+	MaxActiveSeconds   = 60 * 60 * 24
+	MaxKeepSeconds     = 60 * 60 * 24 * 30
+	HttpPort           = 8080
+	StatusReporterPort = 8000
+	DefaultWorkspace   = "/workspace"
+	IngressLimitKey    = "kubernetes.io/ingress-bandwidth"
+	EgressLimitKey     = "kubernetes.io/egress-bandwidth"
+	StorageEmptyDir    = "emptyDir"
+	InstanceEndpoint   = "instanceEndpoint"
+	TerminalIngress    = "%s-terminal"
 )
 
 // CodeServerReconciler reconciles a CodeServer object
@@ -155,6 +156,12 @@ func (r *CodeServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			true); err != nil {
 			return reconcile.Result{Requeue: true}, err
 		}
+
+		// Delete the CRD as well
+		reqLogger.Info("deleteing crd", "name", codeServer.Name, "namespace", codeServer.Namespace)
+		if err := r.Client.Delete(ctx, codeServer); err != nil {
+			return reconcile.Result{Requeue: true}, err
+		}
 	} else {
 		var failed error
 		var service *corev1.Service
@@ -213,7 +220,12 @@ func (r *CodeServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				//add it to watch list
 				var endPoint string
 				// No matter tls is enabled or nor we both expose upstream via http for internal probe
-				endPoint = fmt.Sprintf("http://%s:%d/%s", service.Spec.ClusterIP, HttpPort,
+				// HACK: For development we need to use localhost to probe so we can get to it from outside the cluster
+				// Must portfoward kubectl port-forward svc/codeserver-husheng 8000:8000
+				// endPoint = fmt.Sprintf("http://%s:%d/%s", service.Spec.ClusterIP, HttpPort,
+				// 	strings.TrimLeft(codeServer.Spec.ConnectProbe, "/"))
+				reqLogger.Info("Using localhost instead of service", "service", service.Spec.ClusterIP)
+				endPoint = fmt.Sprintf("http://localhost:%d/%s", StatusReporterPort,
 					strings.TrimLeft(codeServer.Spec.ConnectProbe, "/"))
 				condition.Message[InstanceEndpoint] = r.getInstanceEndpoint(codeServer)
 
@@ -246,8 +258,11 @@ func (r *CodeServerReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		//if it's ready and missing server bound status, add default condition here.
 		if HasCondition(codeServer.Status, csv1alpha1.ServerReady) && MissingCondition(
 			codeServer.Status, csv1alpha1.ServerBound) {
+			// HACK, cannot figure out where it is being bound. Maybe not in this branch or something. Could disable binding instead
+			// additionCondition := NewStateCondition(csv1alpha1.ServerBound,
+			// 	"code server waiting to be bound", map[string]string{}, corev1.ConditionFalse)
 			additionCondition := NewStateCondition(csv1alpha1.ServerBound,
-				"code server waiting to be bound", map[string]string{}, corev1.ConditionFalse)
+				"code server forced bound", map[string]string{}, corev1.ConditionTrue)
 			boundCondition = SetCondition(&codeServer.Status, additionCondition)
 		}
 		if createCondition || updateCondition || boundCondition {
@@ -696,7 +711,7 @@ func (r *CodeServerReconciler) deploymentForVSCodeServer(m *csv1alpha1.CodeServe
 								},
 							},
 							Ports: []corev1.ContainerPort{{
-								ContainerPort: 8000,
+								ContainerPort: StatusReporterPort,
 								Name:          "statusreporter",
 							}},
 						},
@@ -1086,6 +1101,14 @@ func (r *CodeServerReconciler) newService(m *csv1alpha1.CodeServer) *corev1.Serv
 		Protocol:   corev1.ProtocolTCP,
 		TargetPort: r.getContainerPort(m),
 	})
+
+	// HACK: statusreporter service. Might only need for vscode
+	ser.Spec.Ports = append(ser.Spec.Ports, corev1.ServicePort{
+		Port:       StatusReporterPort,
+		Name:       "statusreporter",
+		Protocol:   corev1.ProtocolTCP,
+		TargetPort: intstr.FromInt(StatusReporterPort),
+	})
 	// Set CodeServer instance as the owner of the Service.
 	controllerutil.SetControllerReference(m, ser, r.Scheme)
 	return ser
@@ -1295,7 +1318,7 @@ func filterOutCondition(states *csv1alpha1.CodeServerStatus, currentCondition cs
 				condition.LastUpdateTime = metav1.Now()
 				condition.LastTransitionTime = metav1.Now()
 			}
-			if condition.Type == csv1alpha1.ServerErrored || condition.Status == corev1.ConditionTrue {
+			if condition.Type == csv1alpha1.ServerErrored && condition.Status == corev1.ConditionTrue {
 				//update error condition if ready is true
 				condition.Status = corev1.ConditionFalse
 				condition.LastUpdateTime = metav1.Now()

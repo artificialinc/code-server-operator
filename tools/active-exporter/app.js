@@ -12,6 +12,7 @@ app.get('/active-time', (req, res) => {
         console.log(`${stat_file} not exists.`)
         res.status(204).send()
     } else {
+        console.log(fs.statSync(stat_file).mtime)
         res.setHeader('content-type', 'text/plain');
         res.status(200).send(fs.statSync(stat_file).mtime);
     }

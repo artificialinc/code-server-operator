@@ -65,7 +65,7 @@ func main() {
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&csOption.DomainName, "domain-name", "pool1.playground.osinfra.cn", "Code server domain name.")
-	flag.StringVar(&csOption.VSExporterImage, "vs-default-exporter", "tommylike/active-exporter-x86:latest",
+	flag.StringVar(&csOption.VSExporterImage, "vs-default-exporter", "ghcr.io/artificial-aidan/active-exporter:latest",
 		"Default exporter image used as a code server sidecar for VS code instance.")
 	flag.IntVar(&csOption.ProbeInterval, "probe-interval", 20,
 		"time in seconds between two probes on code server instance.")

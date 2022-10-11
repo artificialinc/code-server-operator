@@ -5,11 +5,11 @@ metadata:
 spec:
   runtime: code
   subdomain: codeservertommy
-  image: "codercom/code-server:4.4.0"
+  image: "codercom/code-server:4.7.1"
   storageSize: "1Gi"
   storageName: "emptyDir"
-  inactiveAfterSeconds: 600
-  recycleAfterSeconds: 1200
+  inactiveAfterSeconds: 120
+  recycleAfterSeconds: 240
   readinessProbe:
     httpGet:
       path: "/active-time"
@@ -24,4 +24,4 @@ spec:
     requests:
       cpu: "2"
       memory: "2048m"
-  connectProbe: "/login"
+  connectProbe: "/active-time"
